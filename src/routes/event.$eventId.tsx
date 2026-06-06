@@ -1,7 +1,7 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Camera as CamIcon, Clock, Lock, Download, ArrowLeft, Copy, Check, Users, Trash2, Pencil, Play } from "lucide-react";
+import { Camera as CamIcon, Clock, Lock, Download, ArrowLeft, Copy, Check, Users, Pencil, Play } from "lucide-react";
 import { toast } from "sonner";
 import JSZip from "jszip";
 import fileSaver from "file-saver";
