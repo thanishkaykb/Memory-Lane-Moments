@@ -14,13 +14,124 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      event_members: {
+        Row: {
+          event_id: string
+          joined_at: string
+          user_id: string
+        }
+        Insert: {
+          event_id: string
+          joined_at?: string
+          user_id: string
+        }
+        Update: {
+          event_id?: string
+          joined_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "event_members_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "events"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      events: {
+        Row: {
+          code: string
+          created_at: string
+          description: string | null
+          host_id: string
+          id: string
+          name: string
+          reveal_at: string
+        }
+        Insert: {
+          code: string
+          created_at?: string
+          description?: string | null
+          host_id: string
+          id?: string
+          name: string
+          reveal_at: string
+        }
+        Update: {
+          code?: string
+          created_at?: string
+          description?: string | null
+          host_id?: string
+          id?: string
+          name?: string
+          reveal_at?: string
+        }
+        Relationships: []
+      }
+      photos: {
+        Row: {
+          caption: string | null
+          event_id: string
+          id: string
+          storage_path: string
+          taken_at: string
+          user_id: string
+        }
+        Insert: {
+          caption?: string | null
+          event_id: string
+          id?: string
+          storage_path: string
+          taken_at?: string
+          user_id: string
+        }
+        Update: {
+          caption?: string | null
+          event_id?: string
+          id?: string
+          storage_path?: string
+          taken_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "photos_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "events"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      profiles: {
+        Row: {
+          created_at: string
+          display_name: string | null
+          id: string
+        }
+        Insert: {
+          created_at?: string
+          display_name?: string | null
+          id: string
+        }
+        Update: {
+          created_at?: string
+          display_name?: string | null
+          id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      is_event_member: {
+        Args: { _event_id: string; _user_id: string }
+        Returns: boolean
+      }
     }
     Enums: {
       [_ in never]: never
