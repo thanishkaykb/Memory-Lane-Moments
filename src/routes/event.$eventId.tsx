@@ -1,7 +1,10 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Camera as CamIcon, Clock, Lock, Download, ArrowLeft, Copy, Check, Users, Pencil, Play, Upload, Loader2 } from "lucide-react";
+import {
+  Camera as CamIcon, Clock, Lock, Download, ArrowLeft, Copy, Check,
+  Users, Pencil, Play, Upload, Loader2, Trash2, CheckSquare, Square as SquareIcon, X,
+} from "lucide-react";
 import { toast } from "sonner";
 import JSZip from "jszip";
 import fileSaver from "file-saver";
@@ -11,7 +14,9 @@ import { Header } from "@/components/Header";
 import { CameraCapture } from "@/components/CameraCapture";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 
 const { saveAs } = fileSaver;
 
@@ -26,6 +31,8 @@ function EventPage() {
   const [showCamera, setShowCamera] = useState(false);
   const [copied, setCopied] = useState(false);
   const [now, setNow] = useState(() => Date.now());
+  const [selectMode, setSelectMode] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     if (!authLoading && !user) navigate({ to: "/auth" });
@@ -36,12 +43,9 @@ function EventPage() {
     return () => clearInterval(t);
   }, []);
 
-  // Auto-join if not yet a member (so a host or invited user landing on the link gets membership)
   useEffect(() => {
     if (!user) return;
-    (async () => {
-      await supabase.from("event_members").insert({ event_id: eventId, user_id: user.id }).then(() => {});
-    })();
+    supabase.from("event_members").insert({ event_id: eventId, user_id: user.id }).then(() => {});
   }, [user, eventId]);
 
   const eventQ = useQuery({
@@ -70,6 +74,7 @@ function EventPage() {
   const event = eventQ.data;
   const revealAt = event ? new Date(event.reveal_at).getTime() : 0;
   const revealed = now >= revealAt;
+  const isHost = !!user && !!event && user.id === event.host_id;
 
   const photosQ = useQuery({
     queryKey: ["photos", eventId, revealed],
@@ -97,7 +102,39 @@ function EventPage() {
   if (authLoading || eventQ.isLoading) return <div className="min-h-screen grid place-items-center text-muted-foreground">Loading…</div>;
   if (!event) return <div className="min-h-screen grid place-items-center text-muted-foreground">Event not found</div>;
 
-  const isHost = user?.id === event.host_id;
+  function toggleSelect(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }
+
+  function clearSelection() {
+    setSelected(new Set());
+    setSelectMode(false);
+  }
+
+  async function downloadSelected() {
+    const photos = (photosQ.data ?? []).filter((p) => selected.has(p.id));
+    if (!photos.length) return;
+    if (photos.length === 1) {
+      const p = photos[0];
+      const { data, error } = await supabase.storage.from("event-photos").download(p.storage_path);
+      if (error || !data) return toast.error("Download failed");
+      saveAs(data, p.storage_path.split("/").pop()!);
+      return clearSelection();
+    }
+    const zip = new JSZip();
+    const folder = zip.folder(event!.name.replace(/[^\w\s-]/g, "").trim() || "album")!;
+    for (const p of photos) {
+      const { data } = await supabase.storage.from("event-photos").download(p.storage_path);
+      if (data) folder.file(p.storage_path.split("/").pop()!, data);
+    }
+    const blob = await zip.generateAsync({ type: "blob" });
+    saveAs(blob, `${event!.name}-selected.zip`);
+    clearSelection();
+  }
 
   return (
     <div className="min-h-screen">
@@ -116,6 +153,8 @@ function EventPage() {
               >
                 {event.code} {copied ? <Check className="ml-1 inline h-3 w-3" /> : <Copy className="ml-1 inline h-3 w-3" />}
               </span>
+              {isHost && <EditEventDialog event={event} onSaved={() => eventQ.refetch()} />}
+              {isHost && <DeleteEventDialog event={event} onDeleted={() => navigate({ to: "/" })} />}
             </div>
             <h1 className="mt-3 text-4xl sm:text-5xl font-display">{event.name}</h1>
             {event.description && <p className="mt-3 text-muted-foreground max-w-2xl">{event.description}</p>}
@@ -125,17 +164,39 @@ function EventPage() {
                 <CamIcon className="mr-2 h-5 w-5" /> Take photo / video
               </Button>
               <UploadButton eventId={eventId} userId={user?.id ?? ""} onUploaded={() => photosQ.refetch()} />
-              {revealed && photosQ.data && photosQ.data.length > 0 && (
-                <DownloadButton photos={photosQ.data} eventName={event.name} />
+              {revealed && (photosQ.data?.length ?? 0) > 0 && (
+                <>
+                  <DownloadButton photos={photosQ.data!} eventName={event.name} />
+                  <Button
+                    variant={selectMode ? "default" : "outline"}
+                    size="lg"
+                    className="h-12 px-6"
+                    onClick={() => { setSelectMode((v) => !v); setSelected(new Set()); }}
+                  >
+                    {selectMode ? <><X className="mr-2 h-5 w-5" /> Cancel</> : <><CheckSquare className="mr-2 h-5 w-5" /> Select</>}
+                  </Button>
+                </>
               )}
             </div>
+
+            {selectMode && (
+              <div className="mt-4 flex items-center justify-between rounded-xl border border-primary/40 bg-primary/5 px-4 py-2 text-sm">
+                <span>{selected.size} selected</span>
+                <Button size="sm" disabled={!selected.size} onClick={downloadSelected}>
+                  <Download className="mr-2 h-4 w-4" /> Download {selected.size > 1 ? "ZIP" : "file"}
+                </Button>
+              </div>
+            )}
 
             <Gallery
               photos={photosQ.data ?? []}
               revealed={revealed}
-              userId={user?.id ?? ""}
               members={membersQ.data ?? []}
-              onChanged={() => photosQ.refetch()}
+              hostId={event.host_id}
+              isHost={isHost}
+              selectMode={selectMode}
+              selected={selected}
+              onToggleSelect={toggleSelect}
             />
           </div>
 
@@ -166,13 +227,20 @@ function EventPage() {
               <div className="flex items-center gap-2 text-xs uppercase tracking-widest text-muted-foreground">
                 <Users className="h-4 w-4" /> {membersQ.data?.length ?? 0} guests
               </div>
-              <ul className="mt-3 space-y-1 text-sm">
-                {(membersQ.data ?? []).slice(0, 12).map((m: any) => (
-                  <li key={m.user_id} className="text-foreground/80">
-                    {m.profiles?.display_name ?? "Guest"}{m.user_id === event.host_id && <span className="ml-2 text-xs text-primary">host</span>}
-                  </li>
-                ))}
-              </ul>
+              {isHost ? (
+                <ul className="mt-3 space-y-1 text-sm">
+                  {(membersQ.data ?? []).slice(0, 50).map((m: any) => (
+                    <li key={m.user_id} className="text-foreground/80">
+                      {m.profiles?.display_name ?? "Guest"}
+                      {m.user_id === event.host_id && <span className="ml-2 text-xs text-primary">host</span>}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="mt-3 text-sm text-muted-foreground">
+                  Joined the circle. Only the host can see who else is here.
+                </p>
+              )}
             </div>
 
             <div className="rounded-2xl border border-dashed border-border bg-card/40 p-5 text-sm text-muted-foreground">
@@ -186,6 +254,99 @@ function EventPage() {
         <CameraCapture eventId={eventId} onClose={() => setShowCamera(false)} onUploaded={() => photosQ.refetch()} />
       )}
     </div>
+  );
+}
+
+function EditEventDialog({ event, onSaved }: { event: any; onSaved: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState(event.name);
+  const [desc, setDesc] = useState(event.description ?? "");
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => { if (open) { setName(event.name); setDesc(event.description ?? ""); } }, [open, event]);
+
+  async function save() {
+    if (!name.trim()) return toast.error("Name can't be empty");
+    setBusy(true);
+    const { error } = await supabase.from("events").update({ name: name.trim(), description: desc }).eq("id", event.id);
+    setBusy(false);
+    if (error) return toast.error(error.message);
+    toast.success("Event updated");
+    setOpen(false);
+    onSaved();
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <button className="inline-flex items-center gap-1 rounded-full bg-secondary px-3 py-1 text-xs text-foreground/80 hover:bg-secondary/70">
+          <Pencil className="h-3 w-3" /> Edit details
+        </button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader><DialogTitle className="font-display text-2xl">Edit event</DialogTitle></DialogHeader>
+        <div className="space-y-4">
+          <div className="space-y-1.5"><Label>Event name</Label><Input value={name} onChange={(e) => setName(e.target.value)} /></div>
+          <div className="space-y-1.5"><Label>Description</Label><Textarea value={desc} onChange={(e) => setDesc(e.target.value)} /></div>
+          <Button onClick={save} disabled={busy} className="w-full h-11">{busy ? "Saving…" : "Save"}</Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function DeleteEventDialog({ event, onDeleted }: { event: any; onDeleted: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [confirm, setConfirm] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  async function destroy() {
+    setBusy(true);
+    try {
+      // List & delete all storage objects under this event folder
+      const folder = `${event.id}`;
+      const { data: userDirs } = await supabase.storage.from("event-photos").list(folder);
+      const allPaths: string[] = [];
+      for (const ud of userDirs ?? []) {
+        const { data: files } = await supabase.storage.from("event-photos").list(`${folder}/${ud.name}`);
+        for (const f of files ?? []) allPaths.push(`${folder}/${ud.name}/${f.name}`);
+      }
+      if (allPaths.length) await supabase.storage.from("event-photos").remove(allPaths);
+      // Delete photo rows then event (FK cascades members)
+      await supabase.from("photos").delete().eq("event_id", event.id);
+      const { error } = await supabase.from("events").delete().eq("id", event.id);
+      if (error) throw error;
+      toast.success("Event deleted");
+      onDeleted();
+    } catch (e: any) {
+      toast.error(e?.message ?? "Could not delete event");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <button className="inline-flex items-center gap-1 rounded-full bg-destructive/15 px-3 py-1 text-xs text-destructive hover:bg-destructive/25">
+          <Trash2 className="h-3 w-3" /> Delete event
+        </button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader><DialogTitle className="font-display text-2xl">Delete this event?</DialogTitle></DialogHeader>
+        <p className="text-sm text-muted-foreground">
+          This permanently removes the event, every photo and video, and kicks all guests. There is no undo.
+          Type <span className="font-mono text-foreground">DELETE</span> to confirm.
+        </p>
+        <Input value={confirm} onChange={(e) => setConfirm(e.target.value)} placeholder="DELETE" />
+        <DialogFooter>
+          <Button variant="ghost" onClick={() => setOpen(false)}>Cancel</Button>
+          <Button variant="destructive" onClick={destroy} disabled={busy || confirm !== "DELETE"}>
+            {busy ? "Deleting…" : "Delete forever"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -228,7 +389,12 @@ function EditRevealDialog({ eventId, currentReveal, onSaved }: { eventId: string
   );
 }
 
-function Gallery({ photos, revealed, members }: { photos: any[]; revealed: boolean; userId: string; members: any[]; onChanged: () => void }) {
+function Gallery({
+  photos, revealed, members, hostId, isHost, selectMode, selected, onToggleSelect,
+}: {
+  photos: any[]; revealed: boolean; members: any[]; hostId: string; isHost: boolean;
+  selectMode: boolean; selected: Set<string>; onToggleSelect: (id: string) => void;
+}) {
   if (!revealed) {
     return (
       <div className="mt-10 rounded-3xl border border-dashed border-border bg-card/40 p-12 text-center">
@@ -254,13 +420,29 @@ function Gallery({ photos, revealed, members }: { photos: any[]; revealed: boole
     <div className="mt-10">
       <h2 className="text-2xl font-display">Album</h2>
       <div className="mt-5 grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4">
-        {photos.map((p) => <MediaTile key={p.id} photo={p} members={members} />)}
+        {photos.map((p) => (
+          <MediaTile
+            key={p.id}
+            photo={p}
+            members={members}
+            hostId={hostId}
+            isHost={isHost}
+            selectMode={selectMode}
+            selected={selected.has(p.id)}
+            onToggleSelect={onToggleSelect}
+          />
+        ))}
       </div>
     </div>
   );
 }
 
-function MediaTile({ photo, members }: { photo: any; members: any[] }) {
+function MediaTile({
+  photo, members, hostId, isHost, selectMode, selected, onToggleSelect,
+}: {
+  photo: any; members: any[]; hostId: string; isHost: boolean;
+  selectMode: boolean; selected: boolean; onToggleSelect: (id: string) => void;
+}) {
   const [url, setUrl] = useState<string | null>(null);
   const isVideo = photo.media_type === "video";
 
@@ -273,9 +455,27 @@ function MediaTile({ photo, members }: { photo: any; members: any[] }) {
   }, [photo.storage_path]);
 
   const taker = members.find((m) => m.user_id === photo.user_id)?.profiles?.display_name ?? "Guest";
+  const timeLabel = new Date(photo.taken_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  // Privacy: only the host sees who took which shot.
+  const caption = isHost
+    ? `${taker}${photo.user_id === hostId ? " (host)" : ""} · ${timeLabel}`
+    : timeLabel;
+
+  function handleClick(e: React.MouseEvent) {
+    if (selectMode) {
+      e.preventDefault();
+      onToggleSelect(photo.id);
+    }
+  }
 
   return (
-    <a href={url ?? "#"} target="_blank" rel="noreferrer" className="group relative aspect-square overflow-hidden rounded-xl bg-secondary block">
+    <a
+      href={url ?? "#"}
+      target="_blank"
+      rel="noreferrer"
+      onClick={handleClick}
+      className={`group relative aspect-square overflow-hidden rounded-xl bg-secondary block ${selected ? "ring-4 ring-primary" : ""}`}
+    >
       {url ? (
         isVideo ? (
           <>
@@ -287,13 +487,18 @@ function MediaTile({ photo, members }: { photo: any; members: any[] }) {
             </div>
           </>
         ) : (
-          <img src={url} alt={`Photo by ${taker}`} className="h-full w-full object-cover transition group-hover:scale-105" loading="lazy" />
+          <img src={url} alt={caption} className="h-full w-full object-cover transition group-hover:scale-105" loading="lazy" />
         )
       ) : (
         <div className="h-full w-full animate-pulse bg-muted" />
       )}
+      {selectMode && (
+        <div className="absolute top-2 right-2 grid h-7 w-7 place-items-center rounded-full bg-black/60 text-white">
+          {selected ? <CheckSquare className="h-4 w-4" /> : <SquareIcon className="h-4 w-4" />}
+        </div>
+      )}
       <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-2 text-xs text-white opacity-0 transition group-hover:opacity-100 pointer-events-none">
-        {taker} · {new Date(photo.taken_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+        {caption}
       </div>
     </a>
   );
@@ -350,21 +555,14 @@ function UploadButton({ eventId, userId, onUploaded }: { eventId: string; userId
       ok++;
     }
     setBusy(false);
-    if (ok) toast.success(`Uploaded ${ok} ${ok === 1 ? "file" : "files"} to the secret album`);
+    if (ok) toast.success(`Uploaded ${ok} ${ok === 1 ? "file" : "files"} to the album`);
     if (fail) toast.error(`${fail} upload${fail === 1 ? "" : "s"} failed`);
     if (ok) onUploaded();
   }
 
   return (
     <>
-      <input
-        ref={inputRef}
-        type="file"
-        accept="image/*,video/*"
-        multiple
-        className="hidden"
-        onChange={handleFiles}
-      />
+      <input ref={inputRef} type="file" accept="image/*,video/*" multiple className="hidden" onChange={handleFiles} />
       <Button variant="outline" size="lg" onClick={() => inputRef.current?.click()} disabled={busy} className="h-12 px-6">
         {busy ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <Upload className="mr-2 h-5 w-5" />}
         {busy ? "Uploading…" : "Upload from gallery"}

@@ -77,9 +77,9 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Disposable — Shared event photo albums" },
+      { title: "TimeCapsule — Shared event photo albums" },
       { name: "description", content: "A virtual disposable camera for weddings, parties, and gatherings. Snap photos in-app and reveal the shared album together." },
-      { property: "og:title", content: "Disposable — Shared event photo albums" },
+      { property: "og:title", content: "TimeCapsule — Shared event photo albums" },
       { property: "og:description", content: "Snap. Wait. Reveal together." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },

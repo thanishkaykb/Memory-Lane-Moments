@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 export const Route = createFileRoute("/auth")({
-  head: () => ({ meta: [{ title: "Sign in — Disposable" }] }),
+  head: () => ({ meta: [{ title: "Sign in — TimeCapsule" }] }),
   component: AuthPage,
 });
 
@@ -62,7 +62,7 @@ function AuthPage() {
           <span className="grid h-11 w-11 place-items-center rounded-full bg-primary/15 text-primary">
             <Camera className="h-6 w-6" />
           </span>
-          <span className="font-display text-2xl">Disposable</span>
+          <span className="font-display text-2xl">TimeCapsule</span>
         </Link>
         <div className="rounded-3xl border border-border bg-card/80 p-8 shadow-card">
           <h1 className="text-2xl mb-1">Welcome</h1>

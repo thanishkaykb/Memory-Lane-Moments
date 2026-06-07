@@ -13,7 +13,7 @@ export function Header() {
           <span className="grid h-9 w-9 place-items-center rounded-full bg-primary/15 text-primary">
             <Camera className="h-5 w-5" />
           </span>
-          <span className="font-display text-xl">Disposable</span>
+          <span className="font-display text-xl">TimeCapsule</span>
         </Link>
         {user ? (
           <div className="flex items-center gap-3">
