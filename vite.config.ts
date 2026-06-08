@@ -14,18 +14,5 @@ export default defineConfig({
     // Redirect TanStack Start's bundled server entry to src/server.ts (our SSR error wrapper).
     server: { entry: "server" },
   },
-  // Force-enable nitro on non-sandbox builds (Vercel) and target the right preset.
-  // For the `vercel` preset we let nitro use its default output dirs
-  // (.vercel/output/*) so Vercel auto-detects the Build Output API v3.
-  nitro:
-    preset === "vercel"
-      ? {
-          preset: "vercel",
-          output: {
-            dir: ".vercel/output",
-            serverDir: ".vercel/output/functions/server.func",
-            publicDir: ".vercel/output/static",
-          },
-        }
-      : { preset },
+  nitro: { preset },
 });
